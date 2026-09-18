@@ -11,10 +11,39 @@ expects before converting to German comma notation.
 """
 from __future__ import annotations
 
+import platform
 import shutil
 import subprocess
 import tempfile
 from pathlib import Path
+
+# Common install locations LibreOffice does NOT automatically add to PATH,
+# especially on Windows (the installer never adds soffice.exe to PATH) and
+# on macOS (the binary lives inside the .app bundle).
+_FALLBACK_PATHS = [
+    r"C:\Program Files\LibreOffice\program\soffice.exe",
+    r"C:\Program Files (x86)\LibreOffice\program\soffice.exe",
+    "/Applications/LibreOffice.app/Contents/MacOS/soffice",
+    "/usr/bin/soffice",
+    "/usr/local/bin/soffice",
+    "/opt/libreoffice/program/soffice",
+]
+
+
+def _find_soffice() -> str:
+    for name in ("soffice", "soffice.exe"):
+        found = shutil.which(name)
+        if found:
+            return found
+    for candidate in _FALLBACK_PATHS:
+        if Path(candidate).exists():
+            return candidate
+    raise FileNotFoundError(
+        "LibreOffice (soffice) wurde nicht gefunden - weder im PATH noch an den "
+        f"ueblichen Installationsorten ({', '.join(_FALLBACK_PATHS)}).\n"
+        "Bitte LibreOffice installieren: https://www.libreoffice.org/download/download/\n"
+        f"(erkanntes Betriebssystem: {platform.system()})"
+    )
 
 _XCU_TEMPLATE = """<?xml version="1.0" encoding="UTF-8"?>
 <oor:items xmlns:oor="http://openoffice.org/2001/registry" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
@@ -52,9 +81,10 @@ def recalculate(xlsx_path: Path, timeout: int = 180) -> Path:
         out_dir = tmp_path / "out"
         out_dir.mkdir()
         _make_profile(profile_dir)
+        soffice = _find_soffice()
 
         cmd = [
-            "soffice",
+            soffice,
             "--headless",
             "--norestore",
             "--nolockcheck",
